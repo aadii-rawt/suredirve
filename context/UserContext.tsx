@@ -3,6 +3,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -22,8 +23,9 @@ type TodoContextType = {
   updateTodo: (id: number, todo: Omit<Todo, "id">) => void;
   deleteTodo: (id: number) => void;
   toggleTodoStatus: (id: number) => void;
-  user : any,
-  setUser : any
+  user: any;
+  setUser: any;
+  initialized: boolean; // ✅ ADD THIS
 };
 
 const userContext = createContext<TodoContextType | undefined>(undefined);
@@ -31,15 +33,26 @@ const userContext = createContext<TodoContextType | undefined>(undefined);
 export function useUser(): TodoContextType {
   const ctx = useContext(userContext);
   if (!ctx) {
-    throw new Error("useTodos must be used within a TodoProvider");
+    throw new Error("useUser must be used within UserProvider");
   }
   return ctx;
 }
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [todos, setTodos] = useState<Todo[]>([]);
-    const [user,setUser] = useState<any>(null)
-  const addTodo: TodoContextType["addTodo"] = (todo) => {
+  const [user, setUser] = useState<any>(null);
+  const [initialized, setInitialized] = useState(false); // ✅ ADD THIS
+
+  // 🔥 Restore user safely
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+    setInitialized(true); // ✅ VERY IMPORTANT
+  }, []);
+
+  const addTodo = (todo: Omit<Todo, "id">) => {
     setTodos((prev) => [
       ...prev,
       {
@@ -49,17 +62,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     ]);
   };
 
-  const updateTodo: TodoContextType["updateTodo"] = (id, todo) => {
+  const updateTodo = (id: number, todo: Omit<Todo, "id">) => {
     setTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...todo } : t))
     );
   };
 
-  const deleteTodo: TodoContextType["deleteTodo"] = (id) => {
+  const deleteTodo = (id: number) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const toggleTodoStatus: TodoContextType["toggleTodoStatus"] = (id) => {
+  const toggleTodoStatus = (id: number) => {
     setTodos((prev) =>
       prev.map((t) =>
         t.id === id
@@ -74,11 +87,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   return (
     <userContext.Provider
-      value={{ todos, addTodo, updateTodo, deleteTodo, toggleTodoStatus, user, setUser }}
+      value={{
+        todos,
+        addTodo,
+        updateTodo,
+        deleteTodo,
+        toggleTodoStatus,
+        user,
+        setUser,
+        initialized, // ✅ PROVIDE THIS
+      }}
     >
       {children}
     </userContext.Provider>
   );
 }
-
-

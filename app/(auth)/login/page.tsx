@@ -28,7 +28,7 @@ export default function Login() {
     try {
       setLoading(true);
       const res = await api.post("/auth/login", { email, password });
-
+      localStorage.setItem("user", JSON.stringify(res.data.user))
       // ✅ save user in context
       setUser(res.data.user);
 

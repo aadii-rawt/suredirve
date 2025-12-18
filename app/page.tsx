@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/context/UserContext";
+import AuthGuard from "@/components/AuthGuard";
+import Header from "@/components/Header";
+import AddTodo from "@/components/AddTodo";
+import Link from "next/link";
+import api from "@/lib/axios";
+import { FiEdit3 } from "react-icons/fi";
+import { MdDeleteOutline } from "react-icons/md";
 
 /* ---------------- TYPES ---------------- */
 type Status = "Pending" | "Completed";
@@ -26,44 +33,84 @@ export default function Home() {
   const [status, setStatus] = useState<Status>("Pending");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const {user} = useUser()
+  const { user } = useUser()
   console.log("user", user);
-  
+
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const fetchTodos = async () => {
+      const res = await api.get(`/todos?userId=${user.id}`);
+      setTodos(res.data.todos);
+    };
+
+    fetchTodos();
+  }, [user]);
+
 
   /* ---------------- CREATE / UPDATE ---------------- */
-  const handleSave = () => {
-    if (!title.trim()) return;
+  const handleSave = async () => {
+    if (!title.trim() || !user?.id) return;
 
-    if (editingId !== null) {
-      setTodos((prev) =>
-        prev.map((todo) =>
-          todo.id === editingId
-            ? { ...todo, title, description, status }
-            : todo
-        )
-      );
-      setEditingId(null);
-    } else {
-      setTodos((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
+    try {
+      // 🔵 UPDATE
+      if (editingId) {
+        const res = await api.put("/todos", {
+          id: editingId,
           title,
           description,
           status,
-        },
-      ]);
+        });
+
+        setTodos((prev) =>
+          prev.map((t) =>
+            t.id === editingId ? res.data.todo : t
+          )
+        );
+      }
+      // 🟢 CREATE
+      else {
+        const res = await api.post("/todos", {
+          title,
+          description,
+          status,
+          userId: user.id,
+        });
+
+        setTodos((prev) => [res.data.todo, ...prev]);
+      }
+    } catch (err) {
+      console.error("Failed to save todo");
     }
 
+    // reset
     setTitle("");
     setDescription("");
     setStatus("Pending");
+    setEditingId(null);
   };
 
+  // const handleComplete = async () => {
+
+  //     const res = await api.put("/todos", {
+  //       status,
+  //     });
+
+  //     setTodos((prev) =>
+  //       prev.map((t) =>
+  //         t.id === editingId ? res.data.todo : t
+  //       )
+  //     );
+  //   }
+  // }
+
   /* ---------------- DELETE ---------------- */
-  const handleDelete = (id: number) => {
-    setTodos((prev) => prev.filter((todo) => todo.id !== id));
+  const handleDelete = async (id: string) => {
+    await api.delete("/todos", { data: { id } });
+    setTodos((prev) => prev.filter((t) => t.id !== id));
   };
+
 
   /* ---------------- EDIT ---------------- */
   const handleEdit = (todo: Todo) => {
@@ -75,17 +122,22 @@ export default function Home() {
   };
 
   /* ---------------- TOGGLE STATUS (CHECKBOX) ---------------- */
-  const handleToggleStatus = (id: number) => {
+  const handleToggleStatus = async (id: number) => {
+
     setTodos((prev) =>
       prev.map((todo) =>
         todo.id === id
           ? {
-              ...todo,
-              status: todo.status === "Completed" ? "Pending" : "Completed",
-            }
+            ...todo,
+            status: todo.status === "Completed" ? "Pending" : "Completed",
+          }
           : todo
       )
     );
+    const res = await api.put("/todos", {
+      id: id,
+      status,
+    });
   };
 
   /* ---------------- MODAL HELPERS ---------------- */
@@ -106,156 +158,125 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto py-10 px-4 space-y-8">
-        {/* DASHBOARD HEADER */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Todo Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage your tasks, mark them complete, and keep track of progress.
-            </p>
-          </div>
-          <Button onClick={handleOpenNew}>Add Todo</Button>
-        </div>
+    <AuthGuard>
+      <Header />
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="flex-1">
+          <div className="max-w-5xl mx-auto w-full py-10 px-4 space-y-8">
+            {/* DASHBOARD HEADER */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Task Management</h1>
+                <p className="text-sm text-muted-foreground">
+                  Manage your tasks, mark them complete, and keep track of progress.
+                </p>
+              </div>
+              <Button onClick={handleOpenNew}>Add Todo</Button>
+            </div>
 
-        {/* LIST */}
-        <div className="space-y-4">
-          {todos.length === 0 && (
-            <p className="text-center text-muted-foreground">
-              No tasks added yet
-            </p>
-          )}
+            {/* LIST */}
+            <div className="space-y-4">
+              {todos.length === 0 && (
+                <p className="text-center text-muted-foreground">
+                  No tasks added yet
+                </p>
+              )}
 
-          {todos.length > 0 && (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 ">
-              {todos.map((todo) => (
-                <Card key={todo.id} className="h-full">
-                  <CardContent className="py-4 space-y-3 h-full flex flex-col justify-between">
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-muted-foreground/40 accent-primary"
-                              checked={todo.status === "Completed"}
-                              onChange={() => handleToggleStatus(todo.id)}
-                            />
-                            <h3
-                              className={`font-semibold ${
+              {todos.length > 0 && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 ">
+                  {todos.map((todo) => (
+                    <Card key={todo.id} className="h-full group">
+                      <CardContent className="py-2 space-y-3 h-full flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4  cursor-pointer rounded border-muted-foreground/40 accent-primary"
+                                  checked={todo.status === "Completed"}
+                                  onChange={() => handleToggleStatus(todo.id)}
+                                />
+                                <h3
+                                  className={`font-semibold text-xl ${todo.status === "Completed"
+                                    ? "line-through text-muted-foreground"
+                                    : ""
+                                    }`}
+                                >
+                                  {todo.title}
+                                </h3>
+                              </div>
+                              {todo.description && (
+                                <p className="text-sm text-muted-foreground">
+                                  {todo.description}
+                                </p>
+                              )}
+                            </div>
+
+                            <Badge
+                              className={
                                 todo.status === "Completed"
-                                  ? "line-through text-muted-foreground"
-                                  : ""
-                              }`}
+                                  ? "bg-green-500"
+                                  : "bg-amber-400"
+                              }
                             >
-                              {todo.title}
-                            </h3>
+                              {todo.status}
+                            </Badge>
                           </div>
-                          {todo.description && (
-                            <p className="text-sm text-muted-foreground">
-                              {todo.description}
-                            </p>
-                          )}
                         </div>
 
-                        <Badge
-                          variant={
-                            todo.status === "Completed"
-                              ? "default"
-                              : "secondary"
-                          }
-                        >
-                          {todo.status}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEdit(todo)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDelete(todo.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                        <div className="justify-end gap-2 pt-1 flex opacity-0 group-hover:opacity-100 duration-500">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="cursor-pointer"
+                            onClick={() => handleEdit(todo)}
+                          >
+                            <FiEdit3 /> Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="cursor-pointer"
+                            onClick={() => handleDelete(todo.id)}
+                          >
+                            <MdDeleteOutline />  Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* MODAL */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="w-full max-w-md">
-              <Card className="shadow-lg">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-lg">
-                    {editingId ? "Edit Todo" : "Add Todo"}
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCloseModal}
-                  >
-                    <span className="sr-only">Close</span>
-                    ✕
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Input
-                    placeholder="Title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
+            <AddTodo
+              open={isModalOpen}
+              editingId={editingId}
+              title={title}
+              description={description}
+              status={status}
+              setTitle={setTitle}
+              setDescription={setDescription}
+              setStatus={setStatus}
+              onSave={() => {
+                handleSave();
+                handleCloseModal();
+              }}
+              onClose={handleCloseModal}
+            />
 
-                  <Textarea
-                    placeholder="Description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
 
-                  <Select
-                    value={status}
-                    onValueChange={(v) => setStatus(v as Status)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Pending">Pending</SelectItem>
-                      <SelectItem value="Completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button className="flex-1" onClick={handleSave}>
-                      {editingId ? "Save Changes" : "Create Todo"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1"
-                      onClick={handleCloseModal}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+      <footer className="py-4 text-center text-sm text-muted-foreground">
+        Made with 🩶 by{" "}
+        <Link href="https://aditya.dotdazzle.in" className="underline hover:text-foreground">
+          Aditya Rawat
+        </Link>
+      </footer>
+
+    </AuthGuard>
   );
 }

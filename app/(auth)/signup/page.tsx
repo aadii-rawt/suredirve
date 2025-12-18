@@ -28,6 +28,7 @@ export default function Signup() {
     try {
       setLoading(true);
       const res = await api.post("/auth/signup", { name, email, password });
+      localStorage.setItem("user", JSON.stringify(res.data.user))
       setUser(res.data.user)
       router.push("/")
     } catch (err: any) {
